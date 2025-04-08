@@ -1,3 +1,6 @@
+import { Enemy } from "./enemy.js";
+import { Player } from "./player.js";
+
 console.log('Javascript is working!');
 
 /**
@@ -6,25 +9,9 @@ console.log('Javascript is working!');
 class Game {
     private canvas: HTMLCanvasElement;
 
-    private ballRadius: number;
+    private player: Player;
 
-    private ballPositionX: number;
-
-    private ballPositionY: number;
-
-    private ballSpeed: number;
-
-    private ballSpeedX: number;
-
-    private ballSpeedY: number;
-
-    private playerPositionX: number;
-
-    private playerPositionY: number;
-
-    private playerRadius: number;
-
-    private playerSpeed: number;
+    private enemies: Enemy[] = [];
 
     private lastTickTimeStamp: number;
 
@@ -42,20 +29,24 @@ class Game {
         this.canvas.width = window.innerWidth - 1;
         this.canvas.height = window.innerHeight - 4;
 
-        // Spawn a Ball
-        this.ballRadius = 10 + 10 * Math.random();
-        this.ballSpeedX = -5 + 10 * Math.random();
-        this.ballSpeedY = 0;
-        this.ballSpeed = 10;
-        this.ballPositionX = this.ballRadius
-            + (this.canvas.width - 2 * this.ballRadius) * Math.random();
-        this.ballPositionY = this.canvas.height * 0.8 + this.canvas.height * 0.2 * Math.random();
+        const enemyRadius = 10 + 10 * Math.random();
 
-        // Set the player at the center
-        this.playerPositionX = this.canvas.width / 2;
-        this.playerPositionY = 50;
-        this.playerRadius = 50;
-        this.playerSpeed = 0.5;
+        const enemyAmount = 5;
+        for(let i = 0; i < enemyAmount; i++) {
+            this.enemies.push(
+                new Enemy(
+                    enemyRadius + (this.canvas.width - 2 * enemyRadius) * Math.random(),
+                    this.canvas.height * 0.8 + this.canvas.height * 0.2 * Math.random(),
+                    enemyRadius,
+                    10 * Math.random(),
+                    -5 + 10 * Math.random(),
+                    0,
+                    'blue'
+                ),
+            )
+        }
+
+        this.player = new Player(this.canvas.width / 2, 50, 50, 0.5, 'red');
 
         // Listen for keyboard input
         window.addEventListener("keydown", (event) => this.keys[event.key.toLowerCase()] = true);
@@ -88,55 +79,10 @@ class Game {
         const timeSinceLastFrame = timestamp - this.lastTickTimeStamp;
         this.lastTickTimeStamp = timestamp;
 
-        // move: calculate the new position of the ball
-        // Some physics here: the y-portion of the speed changes due to gravity
-        // Formula: Vt = V0 + gt
-        // 9.8 is the gravitational constant
-        this.ballSpeedY -= 0.0098 * timeSinceLastFrame;
-        // Calculate new X and Y parts of the position
-        // Formula: S = v*timeSinceLastFrame
-        this.ballPositionX += (this.ballSpeedX * timeSinceLastFrame) * (this.ballSpeed / 25);
-        // Formula: S=v0*timeSinceLastFrame + 0.5*g*timeSinceLastFrame^2
-        this.ballPositionY += ((this.ballSpeedY * timeSinceLastFrame) * (this.ballSpeed / 100)) + 0.5 * 0.0098 * timeSinceLastFrame * timeSinceLastFrame;
-
-        if (this.keys["a"]) {
-            this.playerPositionX = Math.max(this.playerRadius, this.playerPositionX - (this.playerSpeed * timeSinceLastFrame));
-        }
-
-        if (this.keys["d"]) {
-            this.playerPositionX = Math.min(this.canvas.width - this.playerRadius, this.playerPositionX + (this.playerSpeed * timeSinceLastFrame));
-        }
-
-        // collide: check if the ball hits the walls and let it bounce
-        // Left wall
-        if (this.ballPositionX <= this.ballRadius && this.ballSpeedX < 0) {
-            this.ballSpeedX = -this.ballSpeedX;
-        }
-
-        // Right wall
-        if (this.ballPositionX >= this.canvas.width - this.ballRadius
-            && this.ballSpeedX > 0) {
-            this.ballSpeedX = -this.ballSpeedX;
-        }
-
-        // Bottom only (ball will always come down)
-        if (this.ballPositionY <= this.ballRadius && this.ballSpeedY < 0) {
-            this.ballSpeedY = -this.ballSpeedY;
-        }
-
-        if (this.ballPositionY >= this.canvas.height - this.ballRadius && this.ballSpeedY > 0) {
-            this.ballSpeedY = - this.ballSpeedY
-        }
-
-        // adjust: Check if the ball collides with the player. It's game over
-        // then
-        const distX = this.playerPositionX - this.ballPositionX;
-        const distY = this.playerPositionY - this.ballPositionY;
-        // Calculate the distance between ball and player using Pythagoras'
-        // theorem
-        const distance = Math.sqrt(distX * distX + distY * distY);
-        // Collides is distance <= sum of radii of both circles
-        const gameover = distance <= (this.ballRadius + this.playerRadius);
+        this.player.move(this.canvas, timeSinceLastFrame, this.keys);
+        this.enemies.forEach((enemy) => {
+            enemy.move(this.canvas, timeSinceLastFrame);
+        })
 
         // draw: the items on the canvas
         // Get the canvas rendering context
@@ -144,22 +90,17 @@ class Game {
         // Clear the entire canvas
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Draw the player
-        ctx.fillStyle = 'red';
-        ctx.beginPath();
-        const playerPositionY = this.canvas.height - this.playerPositionY;
-        ctx.ellipse(this.playerPositionX, playerPositionY, this.playerRadius, this.playerRadius, 0, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Draw the ball
-        ctx.fillStyle = 'blue';
-        ctx.beginPath();
-        // reverse height, so the ball falls down
-        const y = this.canvas.height - this.ballPositionY;
-        ctx.ellipse(this.ballPositionX, y, this.ballRadius, this.ballRadius, 0, 0, 2 * Math.PI);
-        ctx.fill();
+        this.player.draw(this.canvas);
+        this.enemies.forEach((enemy) => {
+            enemy.draw(this.canvas);
+        })
 
         // Call this method again on the next animation frame
+
+        const gameover = this.enemies.some((enemy) => {
+            return this.player.isHittingOtherBall(enemy)
+        });
+
         if (!gameover) {
             requestAnimationFrame(this.step);
         }
